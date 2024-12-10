@@ -1,0 +1,66 @@
+name: Build and Publish Docker Images
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    strategy:
+      matrix:
+        images: ["dev"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Astarte Base Image
+        id: build-image
+        run: |
+          docker build -t astarte-${{ matrix.images }}:${{ github.sha }} -f ./docker/${{ matrix.images }}/Dockerfile .
+        env:
+          DOCKER_BUILDKIT: 1
+
+      # TODO: next step
+      # - name: Login to DockerHub
+      #   if: success()
+      #   run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Login to GitHub Container Registry
+        if: success()
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # TODO: next step
+      # - name: Publish DockerHub Image
+      #   if: success()
+      #   run: |
+      #     docker tag my-image:${{ github.sha }} my-dockerhub-username/my-image:latest
+      #     docker push my-dockerhub-username/my-image:latest
+
+      - name: Publish GitHub Container Registry Image
+        if: success()
+        run: |
+          docker tag astarte-${{ matrix.images }}:${{ github.sha }} ghcr.io/${{ github.repository_owner }}/astarte-${{ matrix.images }}:latest
+          docker push ghcr.io/${{ github.repository_owner }}/astarte-${{ matrix.images }}:latest
+
+      # TODO: next step
+      # - name: Logout from DockerHub
+      #   if: success()
+      #   run: docker logout
+
+      - name: Logout from GitHub Container Registry
+        if: success()
+        run: docker logout ghcr.io
